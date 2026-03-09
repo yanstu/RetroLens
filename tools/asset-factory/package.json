@@ -1,0 +1,9 @@
+{
+  "name": "retrolens-asset-factory",
+  "version": "1.0.0",
+  "description": "Asset factory for RetroLens",
+  "main": "texture.js",
+  "dependencies": {
+    "canvas": "^2.11.2"
+  }
+}
