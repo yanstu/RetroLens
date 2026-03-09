@@ -81,31 +81,38 @@ const takePhoto = async (): Promise<{ tempFilePath: string, base64: string }> =>
           return;
       }
       
-      const width = _canvasNode.width;
-      const height = _canvasNode.height;
+      const rawWidth = _canvasNode.width;
+      const rawHeight = _canvasNode.height;
       
-      // Render to 2D offscreen canvas using blit (Instant hardware copy, Zero JS loops)
+      let targetWidth = rawWidth;
+      let targetHeight = rawHeight;
+      let offsetX = 0;
+      let offsetY = 0;
+      
+      // Render to 2D offscreen canvas using blit
       const query = uni.createSelectorQuery().in(instance?.proxy);
       query.select('#capture-canvas').node().exec((res) => {
           if(!res[0] || !res[0].node) {
                reject(new Error("Capture canvas missing")); return; 
           }
           const capCanvas = res[0].node;
-          capCanvas.width = width;
-          capCanvas.height = height;
+          // Set 物理画布大小 strictly to cropped size
+          capCanvas.width = targetWidth;
+          capCanvas.height = targetHeight;
+          
           const ctx = capCanvas.getContext('2d');
           
-          // Draw WebGL buffer directly to 2D context using native engine
-          ctx.drawImage(_canvasNode, 0, 0, width, height);
+          // Draw WebGL buffer with negative offset to perform clipping
+          ctx.drawImage(_canvasNode, -offsetX, -offsetY, rawWidth, rawHeight);
           
-          // Now safely save the 2D canvas with exact dimensions
+          // Now safely save the exactly proportioned 2D canvas
           uni.canvasToTempFilePath({
               x: 0,
               y: 0,
-              width: width,
-              height: height,
-              destWidth: width,
-              destHeight: height,
+              width: targetWidth,
+              height: targetHeight,
+              destWidth: targetWidth,
+              destHeight: targetHeight,
               canvas: capCanvas,
               fileType: 'jpg',
               quality: 1,
@@ -383,8 +390,8 @@ export default {
 <style scoped lang="scss">
 .camera-container {
   position: relative;
-  width: 100vw;
-  height: 100vh;
+  width: 100%;
+  height: 100%;
   background-color: #000;
   overflow: hidden;
 }

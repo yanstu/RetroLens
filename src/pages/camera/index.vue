@@ -99,12 +99,10 @@ onMounted(() => {
 
 const onFilterChange = (val: FilterType) => {
     filmStore.setFilm(val);
-    haptics.dialTick();
 };
 
 const toggleRatio = () => {
     currentRatioIdx.value = (currentRatioIdx.value + 1) % ratios.length;
-    haptics.dialTick(); // Slight vibration on ratio switch
 };
 
 const getPinchDistance = (touches: any[]) => {

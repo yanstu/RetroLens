@@ -49,15 +49,18 @@ const goBack = () => {
 .gallery-page {
   width: 100vw;
   height: 100vh;
+  box-sizing: border-box;
   background-color: #111;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
 }
 
 .header {
   padding: max(50px, env(safe-area-inset-top)) 20px 20px;
   background: linear-gradient(to bottom, #222, #111);
   border-bottom: 1px solid #333;
+  flex-shrink: 0;
   
   .header-top {
     display: flex;
@@ -97,7 +100,9 @@ const goBack = () => {
 
 .photo-grid {
   flex: 1;
+  height: 0;
   padding: 10px;
+  box-sizing: border-box;
 }
 
 .grid-container {
