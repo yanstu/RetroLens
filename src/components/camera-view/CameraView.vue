@@ -22,24 +22,32 @@
     <!-- #endif -->
     
     <!-- #ifdef MP-WEIXIN -->
-    <!-- Hidden camera element for mp-weixin to capture frames -->
+    <!-- WeChat Mini Program:
+         Keep native camera visible as a fallback.
+         Once WebGL frame pipeline is confirmed working, canvas fades in on top.
+         This prevents black preview in devtools when onCameraFrame / WebGL is not ready. -->
     <camera 
       device-position="back" 
       flash="off" 
       frame-size="medium" 
-      class="hidden-video"
-      :zoom="zoom"
+      class="native-camera"
+      @initdone="onCameraInitDone"
+      @error="onCameraError"
     ></camera>
     <canvas 
       type="webgl" 
       id="webgl-canvas"
-      class="camera-canvas"
+      class="camera-canvas mp-camera-canvas"
+      :class="{ ready: isMpPipelineReady }"
     ></canvas>
     <canvas
       type="2d"
       id="capture-canvas"
       class="capture-canvas"
     ></canvas>
+    <view v-if="mpPreviewHint" class="mp-preview-hint">
+      <text>{{ mpPreviewHint }}</text>
+    </view>
     <!-- #endif -->
   </view>
 </template>
@@ -64,6 +72,9 @@ const props = defineProps({
   }
 });
 
+const isMpPipelineReady = ref(false);
+const mpPreviewHint = ref('');
+
 // #ifdef MP-WEIXIN
 let renderer: WebGLRenderer | null = null;
 let cameraContext: any = null;
@@ -72,10 +83,121 @@ let mainTexture: WebGLTexture | null = null;
 let _gl: any = null;
 let _canvasNode: any = null;
 const instance = getCurrentInstance();
+let cameraInitialized = false;
+let frameListenerStarted = false;
+let firstSuccessfulRender = false;
+let pipelineWarmupTimer: ReturnType<typeof setTimeout> | null = null;
+const isDevtools = uni.getSystemInfoSync().platform === 'devtools';
+
+const clearWarmupTimer = () => {
+  if (pipelineWarmupTimer) {
+    clearTimeout(pipelineWarmupTimer);
+    pipelineWarmupTimer = null;
+  }
+};
+
+const enterNativePreviewFallback = (message: string) => {
+  isMpPipelineReady.value = false;
+  mpPreviewHint.value = message;
+};
+
+const markPipelineReady = () => {
+  clearWarmupTimer();
+  firstSuccessfulRender = true;
+  isMpPipelineReady.value = true;
+  mpPreviewHint.value = '';
+};
+
+const scheduleWarmupFallback = () => {
+  clearWarmupTimer();
+  pipelineWarmupTimer = setTimeout(() => {
+    if (!firstSuccessfulRender) {
+      enterNativePreviewFallback(
+        isDevtools
+          ? '开发者工具已回退到原生相机预览，滤镜实时效果请以真机为准'
+          : '实时滤镜预览启动较慢，暂时回退到原生相机预览'
+      );
+    }
+  }, isDevtools ? 1200 : 1800);
+};
+
+const syncCameraZoom = (zoom: number) => {
+  if (!cameraContext || !cameraInitialized || typeof cameraContext.setZoom !== 'function') {
+    return;
+  }
+
+  const normalizedZoom = Math.max(1, Math.min(zoom || 1, 5));
+  cameraContext.setZoom({
+    zoom: Number(normalizedZoom.toFixed(1)),
+    fail: (error: any) => {
+      if (!isDevtools) {
+        console.warn('[RetroLens/MP] setZoom failed', error);
+      }
+    }
+  });
+};
+
+const startFrameListenerIfReady = () => {
+  if (frameListenerStarted || !cameraInitialized || !cameraContext) {
+    return;
+  }
+
+  if (typeof cameraContext.onCameraFrame !== 'function') {
+    enterNativePreviewFallback('当前环境暂不支持实时帧回调，已使用原生相机预览');
+    return;
+  }
+
+  frameListener = cameraContext.onCameraFrame((frame: any) => {
+    if (!firstFrameReceived) {
+      firstFrameReceived = true;
+      console.log(`[RetroLens/MP] Camera started: ${frame.width}x${frame.height}`);
+    }
+    currentFrameData = frame.data;
+    currentFrameWidth = frame.width;
+    currentFrameHeight = frame.height;
+  });
+
+  frameListener.start();
+  frameListenerStarted = true;
+  scheduleWarmupFallback();
+};
+
+const onCameraInitDone = () => {
+  cameraInitialized = true;
+  if (!firstSuccessfulRender) {
+    enterNativePreviewFallback(
+      isDevtools
+        ? '开发者工具正在尝试启动滤镜预览，若失败将保留原生相机画面'
+        : '正在启动实时滤镜预览...'
+    );
+  }
+  syncCameraZoom(props.zoom);
+  startFrameListenerIfReady();
+};
+
+const onCameraError = (event: any) => {
+  const message = event?.detail?.errMsg || '无法访问摄像头，请检查开发者工具相机权限或真机授权';
+  console.error('[RetroLens/MP] Camera error:', event?.detail || event);
+  enterNativePreviewFallback(message);
+};
 
 const takePhoto = async (): Promise<{ tempFilePath: string, base64: string }> => {
   return new Promise((resolve, reject) => {
       // #ifdef MP-WEIXIN
+      if (cameraContext && (!isMpPipelineReady.value || !_canvasNode || !_gl)) {
+          cameraContext.takePhoto({
+              quality: 'high',
+              success: (res: any) => {
+                  resolve({
+                      tempFilePath: res.tempImagePath,
+                      base64: ''
+                  });
+              },
+              fail: reject
+          });
+          return;
+      }
+
       if (!_canvasNode || !_gl) {
           reject(new Error('Canvas not ready'));
           return;
@@ -157,6 +279,12 @@ watch(() => props.ratio, () => {
     // #endif
 });
 
+watch(() => props.zoom, (zoom) => {
+    // #ifdef MP-WEIXIN
+    syncCameraZoom(zoom);
+    // #endif
+});
+
 defineExpose({ takePhoto });
 
 let currentFrameData: ArrayBuffer | null = null;
@@ -206,6 +334,8 @@ onMounted(() => {
               }
               
               cameraContext = uni.createCameraContext();
+              syncCameraZoom(props.zoom);
+              startFrameListenerIfReady();
               
               // We MUST use requestAnimationFrame in WeChat to flush WebGL pipelines
               const startTime = Date.now();
@@ -225,8 +355,14 @@ onMounted(() => {
                               currentFrameWidth || canvas.width,
                               currentFrameHeight || canvas.height
                           );
+                          if (!firstSuccessfulRender) {
+                              markPipelineReady();
+                          }
                       } catch (e) {
                           console.error("Frame texture push error", e);
+                          if (!firstSuccessfulRender) {
+                              enterNativePreviewFallback('实时滤镜渲染失败，已回退到原生相机预览');
+                          }
                       }
                   }
                   if (canvas.requestAnimationFrame) {
@@ -237,29 +373,28 @@ onMounted(() => {
                   }
               };
               
-              frameListener = cameraContext.onCameraFrame((frame: any) => {
-                  if (!firstFrameReceived) {
-                      firstFrameReceived = true;
-                      console.log(`[RetroLens/MP] Camera started: ${frame.width}x${frame.height}`);
-                  }
-                  currentFrameData = frame.data;
-                  currentFrameWidth = frame.width;
-                  currentFrameHeight = frame.height;
-              });
-              
-              frameListener.start();
               renderLoop(); // Ignite
               
           } catch (e) {
               console.error('[RetroLens/MP] Error initializing WebGL pipeline:', e);
+              enterNativePreviewFallback('滤镜管线初始化失败，已保留原生相机预览');
           }
         });
   };
+
+  // #ifdef MP-WEIXIN
+  enterNativePreviewFallback(
+    isDevtools
+      ? '开发者工具预览模式：优先显示原生相机画面'
+      : '正在初始化相机...'
+  );
+  // #endif
 
   setTimeout(() => initWebGLCanvas(), 100);
 });
 
 onBeforeUnmount(() => {
+  clearWarmupTimer();
   if (frameListener) frameListener.stop();
   if (renderer) renderer.destroy();
   if (_canvasNode && _canvasNode.cancelAnimationFrame && renderLoopId) {
@@ -402,8 +537,24 @@ export default {
   display: block;
 }
 
+.native-camera,
+.mp-camera-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.mp-camera-canvas {
+  opacity: 0;
+  transition: opacity 0.22s ease-out;
+}
+
+.mp-camera-canvas.ready {
+  opacity: 1;
+}
+
 .hidden-video {
-  /* Native camera component ignores opacity and z-index, must be physically moved off-screen */
   position: absolute;
   top: -9999px;
   left: -9999px;
@@ -417,5 +568,26 @@ export default {
   left: -9999px;
   width: 300px;
   height: 300px;
+}
+
+.mp-preview-hint {
+  position: absolute;
+  left: 16px;
+  right: 16px;
+  bottom: 18px;
+  z-index: 5;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: rgba(0, 0, 0, 0.52);
+  backdrop-filter: blur(10px);
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.26);
+
+  text {
+    display: block;
+    color: rgba(255, 255, 255, 0.92);
+    font-size: 12px;
+    line-height: 1.45;
+    text-align: center;
+  }
 }
 </style>

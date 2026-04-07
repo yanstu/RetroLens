@@ -5,6 +5,8 @@
             "style": {
                 "navigationStyle": "custom",
                 "disableScroll": true,
+                "enableShareAppMessage": true,
+                "enableShareTimeline": true,
                 "app-plus": {
                     "bounce": "none"
                 }
@@ -14,14 +16,18 @@
             "path": "pages/gallery/index",
             "style": {
                 "navigationStyle": "custom",
-                "backgroundColor": "#111111"
+                "backgroundColor": "#111111",
+                "enableShareAppMessage": true,
+                "enableShareTimeline": true
             }
         },
         {
             "path": "pages/settings/index",
             "style": {
                 "navigationStyle": "custom",
-                "backgroundColor": "#111111"
+                "backgroundColor": "#111111",
+                "enableShareAppMessage": true,
+                "enableShareTimeline": true
             }
         }
     ],

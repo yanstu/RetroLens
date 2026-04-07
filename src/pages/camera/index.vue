@@ -23,7 +23,6 @@
           class="filter-dial"
           v-model="currentFilter"
           :items="filterOptions"
-          @change="onFilterChange"
         />
         
         <!-- Bottom Controls -->
@@ -55,9 +54,10 @@ import { FilterType } from '../../core/shader/ShaderLib';
 import CameraView from '../../components/camera-view/CameraView.vue';
 import RetroDial from '../../components/retro-dial/RetroDial.vue';
 import { useFilmStore } from '../../store/filmStore';
-import { usePreferenceStore } from '../../store/preferenceStore';
+import { cameraRatios, type CameraRatio, usePreferenceStore } from '../../store/preferenceStore';
 import { AudioManager } from '../../bridge/audio/AudioManager';
 import { HapticsManager } from '../../bridge/haptics/HapticsManager';
+import { usePageShare } from '../../utils/share';
 
 const filmStore = useFilmStore();
 const prefStore = usePreferenceStore();
@@ -65,18 +65,24 @@ const prefStore = usePreferenceStore();
 const audio = AudioManager.getInstance();
 const haptics = HapticsManager.getInstance();
 
+usePageShare({
+    title: 'RetroLens · 复古胶片相机',
+    path: '/pages/camera/index'
+});
+
 const cameraRef = ref<any>(null);
-const currentFilter = ref<FilterType>(filmStore.currentFilm);
-const remainingShots = computed(() => filmStore.remainingShots); // Remove this entirely
+const currentFilter = computed<FilterType>({
+    get: () => prefStore.selectedFilter,
+    set: (value) => prefStore.setSelectedFilter(value)
+});
 
 const isPressingShutter = ref(false);
 const isFlashing = ref(false);
 const isDeveloping = ref(false);
 
 const zoomLevel = ref(1);
-const ratios = ['4:3', '1:1', '16:9'];
-const currentRatioIdx = ref(0);
-const currentRatio = computed(() => ratios[currentRatioIdx.value]);
+const ratios = cameraRatios;
+const currentRatio = computed<CameraRatio>(() => prefStore.selectedRatio);
 const ratioClass = computed(() => `ratio-${currentRatio.value.replace(':', '-')}`);
 
 let initialPinchDistance = 0;
@@ -97,12 +103,10 @@ onMounted(() => {
     }
 });
 
-const onFilterChange = (val: FilterType) => {
-    filmStore.setFilm(val);
-};
-
 const toggleRatio = () => {
-    currentRatioIdx.value = (currentRatioIdx.value + 1) % ratios.length;
+    const currentIndex = ratios.indexOf(prefStore.selectedRatio);
+    const nextIndex = currentIndex >= 0 ? (currentIndex + 1) % ratios.length : 0;
+    prefStore.setSelectedRatio(ratios[nextIndex]);
 };
 
 const getPinchDistance = (touches: any[]) => {
@@ -321,14 +325,17 @@ const goToSettings = () => {
   gap: 10px;
   
   .ratio-btn {
-    border: 1px solid rgba(255,255,255,0.4);
-    padding: 4px 10px;
-    border-radius: 12px;
-    color: #fff;
+    border: 1px solid rgba(255,255,255,0.18);
+    padding: 6px 12px;
+    border-radius: 14px;
+    color: rgba(255, 248, 238, 0.96);
     font-size: 14px;
+    letter-spacing: 0.5px;
+    text-shadow: 0 1px 6px rgba(0, 0, 0, 0.85);
     font-family: 'Courier New', Courier, monospace;
-    backdrop-filter: blur(5px);
-    background: rgba(0,0,0,0.5);
+    backdrop-filter: blur(10px) saturate(140%);
+    background: linear-gradient(180deg, rgba(8, 10, 16, 0.82) 0%, rgba(18, 20, 26, 0.66) 100%);
+    box-shadow: 0 8px 18px rgba(0,0,0,0.28);
   }
   
   .zoom-indicator {
@@ -378,8 +385,10 @@ const goToSettings = () => {
 
 .filter-dial {
   pointer-events: auto;
-  width: 90%;
-  margin-bottom: 20px;
+  width: 84%;
+  max-width: 560px;
+  align-self: center;
+  margin: 0 auto 18px;
 }
 
 .side-btn {

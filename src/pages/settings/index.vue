@@ -20,7 +20,7 @@
     </view>
     
     <view class="about-section">
-      <text class="retro-text">RetroLens Core Engine v1.0.0</text>
+      <text class="retro-text">RetroLens Core Engine v1.1.0</text>
       <text class="retro-text sub">60FPS Zero-GC Pipeline</text>
     </view>
   </view>
@@ -29,21 +29,27 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import { usePreferenceStore } from '../../store/preferenceStore';
+import { usePageShare } from '../../utils/share';
 
 const prefStore = usePreferenceStore();
 
 const hapticsEnabled = computed(() => prefStore.hapticsEnabled);
 const soundEnabled = computed(() => prefStore.soundEnabled);
 
+usePageShare({
+    title: 'RetroLens · 偏好设置',
+    path: '/pages/settings/index'
+});
+
 const onHapticsChange = (e: any) => {
-    if(prefStore.hapticsEnabled !== e.detail.value) {
-       prefStore.toggleHaptics();
+    if (prefStore.hapticsEnabled !== e.detail.value) {
+        prefStore.setHapticsEnabled(e.detail.value);
     }
 };
 
 const onSoundChange = (e: any) => {
-    if(prefStore.soundEnabled !== e.detail.value) {
-       prefStore.toggleSound();
+    if (prefStore.soundEnabled !== e.detail.value) {
+        prefStore.setSoundEnabled(e.detail.value);
     }
 };
 

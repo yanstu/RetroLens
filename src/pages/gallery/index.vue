@@ -29,9 +29,15 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import { useFilmStore } from '../../store/filmStore';
+import { usePageShare } from '../../utils/share';
 
 const filmStore = useFilmStore();
 const savedPhotos = computed(() => filmStore.savedPhotos);
+
+usePageShare({
+    title: 'RetroLens · 暗房',
+    path: '/pages/gallery/index'
+});
 
 const previewPhoto = (index: number) => {
     uni.previewImage({
